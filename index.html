@@ -245,8 +245,8 @@
               <option value="5">Top 5</option>
               <option value="10">Top 10</option>
               <option value="20">Top 20</option>
-              <option value="100" selected>Top 100</option>
-              <option value="all">All eligible</option>
+              <option value="100">Top 100</option>
+              <option value="all" selected>All eligible</option>
             </select>
           </div>
         </div>
@@ -404,7 +404,7 @@ let currentWeights = {};
 FACTORS.forEach(f => currentWeights[f.key] = f.weight);
 
 let currentMinCust = 50;
-let currentRankFilter = 100;
+let currentRankFilter = 'all';
 let sortKey = 'score'; let sortDir = -1;
 let liveData = [];
 let cityLiveData = [];
