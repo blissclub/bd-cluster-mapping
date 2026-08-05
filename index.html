@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BD Cluster Mapping — Blissclub Retail Analytics</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js" crossorigin="anonymous"></script>
 <style>
   :root{
     --bg:#0A0E17; --panel:#121829; --panel-2:#171F35; --border:#262F49;
     --text:#EDF0F5; --text-dim:#8891A8; --text-faint:#5D6685;
-    --coral:#FF6B57; --teal:#3E8FB1; --green:#4ADE80; --red:#F87171; --amber:#FBBF6B;
+    --coral:#FF6B57; --teal:#5D6685; --green:#4ADE80; --red:#F87171; --amber:#D9A85F;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
@@ -179,6 +179,36 @@
   .add-param-box code{ background:var(--panel-2); padding:1px 5px; border-radius:4px; color:var(--coral); font-family:var(--mono); }
 
   .footer-note{ margin-top:18px; font-size:11px; color:var(--text-faint); text-align:center; }
+
+  /* ---- Voice Assistant ---- */
+  .va-trigger{ position:fixed; bottom:24px; left:24px; z-index:9500; width:52px; height:52px; border-radius:50%;
+    background:var(--coral); border:none; color:#0A0E17; font-size:22px; cursor:pointer;
+    box-shadow:0 6px 20px rgba(255,107,87,0.35); display:flex; align-items:center; justify-content:center; }
+  .va-trigger:hover{ background:#ff8571; }
+  .va-panel{ position:fixed; bottom:88px; left:24px; z-index:9500; width:340px; max-height:480px;
+    background:var(--panel); border:1px solid var(--border); border-radius:14px; display:none;
+    flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,0.5); overflow:hidden; }
+  .va-panel.open{ display:flex; }
+  .va-header{ padding:12px 14px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between;
+    align-items:center; }
+  .va-header-title{ font-size:12px; font-weight:700; color:var(--text); }
+  .va-header-sub{ font-size:10px; color:var(--text-faint); margin-top:1px; }
+  .va-close{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:16px; }
+  .va-close:hover{ color:var(--coral); }
+  .va-transcript{ flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:8px; min-height:180px; max-height:280px; }
+  .va-msg{ font-size:12.5px; line-height:1.45; padding:8px 11px; border-radius:10px; max-width:88%; }
+  .va-msg.user{ background:var(--panel-2); color:var(--text); align-self:flex-end; }
+  .va-msg.bot{ background:rgba(255,107,87,0.1); color:var(--text); align-self:flex-start; border:1px solid rgba(255,107,87,0.2); }
+  .va-input-row{ display:flex; gap:6px; padding:10px; border-top:1px solid var(--border); }
+  .va-text-input{ flex:1; background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
+    padding:8px 10px; color:var(--text); font-size:12px; font-family:var(--sans); }
+  .va-mic-btn{ background:var(--panel-2); border:1px solid var(--border); border-radius:8px; width:36px; height:36px;
+    color:var(--text-dim); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px; }
+  .va-mic-btn.listening{ background:var(--coral); color:#0A0E17; border-color:var(--coral); animation:va-pulse 1.2s infinite; }
+  @keyframes va-pulse{ 0%{box-shadow:0 0 0 0 rgba(255,107,87,0.5);} 70%{box-shadow:0 0 0 10px rgba(255,107,87,0);} 100%{box-shadow:0 0 0 0 rgba(255,107,87,0);} }
+  .va-send-btn{ background:var(--coral); border:none; border-radius:8px; width:36px; height:36px; color:#0A0E17;
+    cursor:pointer; font-size:13px; }
+  .va-hint{ font-size:10px; color:var(--text-faint); padding:0 14px 10px; }
 </style>
 </head>
 <body>
@@ -268,7 +298,7 @@
 
     <div class="panel table-wrap">
       <div class="table-toolbar">
-        <input class="search" id="searchBox" placeholder="Search pincode, city or state…" />
+        <input class="search" id="searchBox" placeholder="e.g. 560001, Mumbai, Rajasthan (comma-separate for multiple)" />
         <div class="table-count" id="tableCount">— rows</div>
       </div>
       <div class="tbl-scroll">
@@ -381,6 +411,26 @@
   </div>
 
   <div class="footer-note">Built from Shopify order export &middot; shipping pincode joined to India Post office directory (geocoding QA'd &amp; corrected) &middot; phone-based customer dedup &middot; cluster sales = density-adaptive radius proxy for 30-min drive</div>
+
+  <button class="va-trigger" id="vaTrigger" title="Ask about this data">&#128172;</button>
+  <div class="va-panel" id="vaPanel">
+    <div class="va-header">
+      <div>
+        <div class="va-header-title">Data Assistant</div>
+        <div class="va-header-sub">Voice or text — asks the loaded pincode data, not a live AI</div>
+      </div>
+      <button class="va-close" id="vaClose">&times;</button>
+    </div>
+    <div class="va-transcript" id="vaTranscript">
+      <div class="va-msg bot">Hi — ask me things like "top 10 pincodes with growth above 50% in Maharashtra", "average retention in Bengaluru", "bottom 5 clusters in Karnataka", or "score of 560001". Tap the mic or type below.</div>
+    </div>
+    <div class="va-hint" id="vaHint"></div>
+    <div class="va-input-row">
+      <button class="va-mic-btn" id="vaMicBtn" title="Voice input">&#127908;</button>
+      <input class="va-text-input" id="vaTextInput" placeholder="Ask a question…" />
+      <button class="va-send-btn" id="vaSendBtn">&#8594;</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -494,13 +544,18 @@ function addRobustTileLayer(targetMap){
   const primary = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution:'&copy; OpenStreetMap &copy; CARTO', subdomains:'abcd', maxZoom:18, noWrap:true
   }).addTo(targetMap);
+  let errorCount = 0;
   let fellBack = false;
+  // a handful of individual missing tiles (ocean/edge areas) is normal and NOT a reason to
+  // ditch the whole dark theme — only fall back if errors are widespread and sustained
   primary.on('tileerror', ()=>{
-    if(fellBack) return;
+    errorCount++;
+    if(fellBack || errorCount < 25) return;
     fellBack = true;
     targetMap.removeLayer(primary);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:'&copy; OpenStreetMap contributors', subdomains:'abc', maxZoom:19, noWrap:true
+    // fallback stays DARK — Esri's dark gray canvas, no API key required
+    L.tileLayer('https://server.arcgismonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      attribution:'&copy; Esri', maxZoom:16, noWrap:true
     }).addTo(targetMap);
   });
   return primary;
@@ -514,7 +569,9 @@ let markerLayer = L.layerGroup().addTo(map);
 // draw every known city boundary as a subtle outline so major city extents are visible on the full India map
 const indiaOutlineLayer = L.layerGroup().addTo(map);
 Object.values(CITY_BOUNDARIES).forEach(geo=>{
-  L.geoJSON(geo, { style:{ color:'#4A5578', weight:1, opacity:0.6, fillOpacity:0 } }).addTo(indiaOutlineLayer);
+  try {
+    L.geoJSON(geo, { style:{ color:'#4A5578', weight:1, opacity:0.6, fillOpacity:0 } }).addTo(indiaOutlineLayer);
+  } catch(e){ console.warn('Skipped a malformed boundary:', e); }
 });
 
 function scoreColor(score){
@@ -554,10 +611,17 @@ function renderMap(){
     clusters = CLUSTER_DATA.slice(0, currentRankFilter);
   }
   clusters.forEach(d=>{
+   try {
     const c = zoneColor(d.grade);
     // fixed size per grade tier — not scaled by revenue ("sales area") on purpose
     const r = d.grade==='high' ? 13 : d.grade==='medium' ? 9 : 6;
-    const marker = L.circleMarker([d.lat,d.lon], { radius:r, color:c, fillColor:c, fillOpacity:0.65, weight:1.6, opacity:0.95 });
+    const isLow = d.grade==='low';
+    const marker = L.circleMarker([d.lat,d.lon], {
+      radius:r, color:c, fillColor:c,
+      fillOpacity: isLow ? 0.06 : 0.65,
+      weight: isLow ? 1.1 : 1.6,
+      opacity: isLow ? 0.5 : 0.95
+    });
     const pinList = d.top_pins.join(', ') + (d.n > d.top_pins.length ? ` +${d.n - d.top_pins.length} more` : '');
     marker.bindPopup(`
       <div class="popup-title">${d.city} Cluster <span class="grade-pill grade-${d.grade}">${d.grade}</span></div>
@@ -572,15 +636,21 @@ function renderMap(){
       <div class="popup-row" style="flex-direction:column; align-items:flex-start; margin-top:4px;"><span>Top pincodes</span><b style="font-size:11px;">${pinList}</b></div>
     `);
     markerLayer.addLayer(marker);
+   } catch(e){ console.warn('Skipped a malformed cluster:', d && d.city, e); }
   });
 }
 function zoneColor(grade){
-  return grade==='high' ? '#FF6B57' : grade==='medium' ? '#FBBF6B' : '#3E8FB1';
+  return grade==='high' ? '#FF6B57' : grade==='medium' ? '#D9A85F' : '#5D6685';
 }
 function renderTable(data){
-  const q = document.getElementById('searchBox').value.trim().toLowerCase();
+  const raw = document.getElementById('searchBox').value.trim().toLowerCase();
+  const terms = raw.split(',').map(t=>t.trim()).filter(Boolean);
   let rows = data;
-  if(q) rows = rows.filter(d => d.pin.includes(q) || d.city.toLowerCase().includes(q) || d.state.toLowerCase().includes(q));
+  if(terms.length){
+    rows = rows.filter(d => terms.some(q =>
+      d.pin.includes(q) || d.city.toLowerCase().includes(q) || d.state.toLowerCase().includes(q)
+    ));
+  }
   const sorted = [...rows].sort((a,b)=>{
     let av=a[sortKey], bv=b[sortKey];
     if(typeof av==='string') return sortDir*av.localeCompare(bv);
@@ -684,7 +754,7 @@ function gradeOf(pct){ // pct = percentile rank (0-1) within this city's current
   if(pct >= 0.33) return 'medium';
   return 'low';
 }
-function gradeColor(g){ return g==='high' ? '#FF6B57' : g==='medium' ? '#FBBF6B' : '#3E8FB1'; }
+function gradeColor(g){ return g==='high' ? '#FF6B57' : g==='medium' ? '#D9A85F' : '#5D6685'; }
 
 function refreshCity(){
   if(!cityMap) return;
@@ -727,6 +797,7 @@ function renderCityMap(data){
   // draw each pincode's ward cell (Voronoi region clipped to the city boundary) — only High grade is filled/bold
   cityWardLayer = L.layerGroup().addTo(cityMap);
   wardCells.forEach(cell => {
+   try {
     const d = dataByPin[cell.pin];
     if(!d) return;
     const isHigh = d.grade === 'high';
@@ -750,6 +821,7 @@ function renderCityMap(data){
     `);
     cityWardLayer.addLayer(poly);
     bounds.push([d.lat,d.lon]);
+   } catch(e){ console.warn('Skipped a malformed ward cell:', cell && cell.pin, e); }
   });
 
   // fallback dots for any pincode without a computed ward cell (rare edge cases)
@@ -910,6 +982,485 @@ document.addEventListener('keydown', (e)=>{
     if(activeFullscreens['cityMapPanel']) setCityMapExpanded(false);
   }
 });
+
+// ---------- Voice / Text Data Assistant ----------
+(function(){
+  const vaTrigger = document.getElementById('vaTrigger');
+  const vaPanel = document.getElementById('vaPanel');
+  const vaClose = document.getElementById('vaClose');
+  const vaTranscript = document.getElementById('vaTranscript');
+  const vaTextInput = document.getElementById('vaTextInput');
+  const vaSendBtn = document.getElementById('vaSendBtn');
+  const vaMicBtn = document.getElementById('vaMicBtn');
+  const vaHint = document.getElementById('vaHint');
+
+  vaTrigger.addEventListener('click', ()=> vaPanel.classList.add('open'));
+  vaClose.addEventListener('click', ()=> vaPanel.classList.remove('open'));
+
+  function addMsg(text, who){
+    const div = document.createElement('div');
+    div.className = 'va-msg ' + who;
+    div.textContent = text;
+    vaTranscript.appendChild(div);
+    vaTranscript.scrollTop = vaTranscript.scrollHeight;
+  }
+
+  function speak(text){
+    if(!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.02;
+    window.speechSynthesis.speak(u);
+  }
+
+  function fmtMoneyVA(v){
+    if(v>=1e7) return '₹'+Math.round(v/1e7*10)/10+' crore';
+    if(v>=1e5) return '₹'+Math.round(v/1e5*10)/10+' lakh';
+    return '₹'+Math.round(v);
+  }
+
+  const NUM_WORDS = {one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,
+    eleven:11,twelve:12,fifteen:15,twenty:20};
+
+  function extractNumber(q, fallback){
+    const digitMatch = q.match(/\b(\d{1,3})\b/);
+    if(digitMatch) return Math.min(100, parseInt(digitMatch[1], 10));
+    for(const w in NUM_WORDS){ if(q.includes(w)) return NUM_WORDS[w]; }
+    return fallback;
+  }
+
+  // cached per-city aggregates for comparisons / "which city is best at X"
+  let _cityAggCache = null;
+  function cityAggregates(){
+    if(_cityAggCache) return _cityAggCache;
+    const agg = {};
+    RAW_DATA.forEach(d=>{
+      const k = d.city.toLowerCase();
+      if(!agg[k]) agg[k] = { city:d.city, state:d.state, revenue:0, customers:0, pincodes:0, growthSum:0, growthN:0, retentionSum:0, grade:null };
+      agg[k].revenue += d.rev;
+      agg[k].customers += d.cust;
+      agg[k].pincodes += 1;
+      agg[k].retentionSum += d.retention;
+      if(d.growth != null){ agg[k].growthSum += d.growth; agg[k].growthN += 1; }
+    });
+    Object.values(agg).forEach(a=>{
+      a.avgGrowth = a.growthN ? a.growthSum/a.growthN : null;
+      a.avgRetention = a.retentionSum/a.pincodes;
+      a.density = a.revenue/a.customers;
+    });
+    _cityAggCache = agg;
+    return agg;
+  }
+
+  const cityWordsAll = Object.keys(RAW_DATA.reduce((a,d)=>{a[d.city.toLowerCase()]=1; return a;},{}));
+  function findCitiesInQuery(q){
+    // longest names first so "navi mumbai" matches before "mumbai" etc.
+    return cityWordsAll.filter(c => q.includes(c)).sort((a,b)=>b.length-a.length).slice(0,4);
+  }
+
+  // ---- state-level aggregates, same shape as city aggregates ----
+  let _stateAggCache = null;
+  function stateAggregates(){
+    if(_stateAggCache) return _stateAggCache;
+    const agg = {};
+    RAW_DATA.forEach(d=>{
+      const k = d.state.toLowerCase();
+      if(!agg[k]) agg[k] = { state:d.state, revenue:0, customers:0, pincodes:0, growthSum:0, growthN:0, retentionSum:0, clusters:0 };
+      agg[k].revenue += d.rev;
+      agg[k].customers += d.cust;
+      agg[k].pincodes += 1;
+      agg[k].retentionSum += d.retention;
+      if(d.growth != null){ agg[k].growthSum += d.growth; agg[k].growthN += 1; }
+    });
+    CLUSTER_DATA.forEach(c=>{
+      const k = c.state.toLowerCase();
+      if(agg[k]) agg[k].clusters += 1;
+    });
+    Object.values(agg).forEach(a=>{
+      a.avgGrowth = a.growthN ? a.growthSum/a.growthN : null;
+      a.avgRetention = a.retentionSum/a.pincodes;
+      a.density = a.revenue/a.customers;
+    });
+    _stateAggCache = agg;
+    return agg;
+  }
+  const stateWordsAll = Object.keys(RAW_DATA.reduce((a,d)=>{a[d.state.toLowerCase()]=1; return a;},{}));
+  function findStatesInQuery(q){
+    return stateWordsAll.filter(s => q.includes(s)).sort((a,b)=>b.length-a.length).slice(0,4);
+  }
+
+  // ---- metric accessor: works uniformly across pincode records and cluster records ----
+  const METRIC_MAP = {
+    revenue:    { pin:d=>d.rev,          cl:c=>c.rev,          label:'revenue',           fmt:'money' },
+    growth:     { pin:d=>d.growth,       cl:c=>c.growth,       label:'growth',            fmt:'pct'   },
+    retention:  { pin:d=>d.retention,    cl:c=>c.retention,    label:'retention',         fmt:'pct'   },
+    density:    { pin:d=>d.density,      cl:c=>null,           label:'revenue density',   fmt:'money' },
+    aov:        { pin:d=>d.aov,          cl:c=>null,           label:'AOV',               fmt:'money' },
+    customers:  { pin:d=>d.cust,         cl:c=>c.cust,         label:'customers',         fmt:'num'   },
+    csales:     { pin:d=>d.csales,       cl:c=>null,           label:'cluster/catchment sales', fmt:'money' },
+    score:      { pin:d=>computeScore(d),cl:c=>c.score,        label:'BD score',          fmt:'num'   }
+  };
+  function fmtByType(v, type){
+    if(v == null) return 'n/a';
+    if(type==='money') return fmtMoneyVA(v);
+    if(type==='pct') return Math.round(v)+'%';
+    if(type==='num') return Math.round(v).toLocaleString('en-IN');
+    return String(v);
+  }
+
+  // ---- structured query parser: entity, metric, direction, N, filters, aggregation ----
+  function parseStructuredQuery(q){
+    const p = {};
+    if(/\bcit(y|ies)\b/.test(q)) p.entity = 'city';
+    else if(/\bstate(s)?\b/.test(q)) p.entity = 'state';
+    else if(/\bcluster/.test(q)) p.entity = 'cluster';
+    else p.entity = 'pincode';
+    p.direction = /\bbottom\b|\bworst\b|\blowest\b|\bleast\b|\bweakest\b/.test(q) ? 'asc' : 'desc';
+    p.wantsRank = /\btop\b|\bbest\b|\bhighest\b|\bbottom\b|\bworst\b|\blowest\b|\bleast\b|\bweakest\b|\brank/.test(q);
+    p.wantsAvg = /\baverage\b|\bavg\b|\bmean\b/.test(q);
+    p.wantsSum = /\btotal\b|\bsum\b/.test(q);
+    p.wantsCount = /\bhow many\b|\bcount\b|\bnumber of\b/.test(q);
+
+    p.metric = 'revenue';
+    if(/growth/.test(q)) p.metric='growth';
+    else if(/retention/.test(q)) p.metric='retention';
+    else if(/density/.test(q)) p.metric='density';
+    else if(/\baov\b|average order/.test(q)) p.metric='aov';
+    else if(/customer/.test(q)) p.metric='customers';
+    else if(/(cluster sale|catchment)/.test(q)) p.metric='csales';
+    else if(/\bscore\b/.test(q)) p.metric='score';
+
+    if(/\bhigh grade\b|\bhigh-grade\b|\bgraded high\b/.test(q)) p.grade='high';
+    else if(/\bmedium grade\b|\bgraded medium\b/.test(q)) p.grade='medium';
+    else if(/\blow grade\b|\bgraded low\b/.test(q)) p.grade='low';
+
+    const aboveMatch = q.match(/(above|over|greater than|more than|exceeding)\s*(-?\d+(\.\d+)?)/);
+    const belowMatch = q.match(/(below|under|less than|lower than)\s*(-?\d+(\.\d+)?)/);
+    if(aboveMatch) p.thresholdAbove = parseFloat(aboveMatch[2]);
+    if(belowMatch) p.thresholdBelow = parseFloat(belowMatch[2]);
+
+    p.n = extractNumber(q, null);
+    // for city/state entities, don't treat the entity's own name mentions as a "filter" —
+    // only meaningful when a DIFFERENT city/state is named alongside (e.g. "cities in Karnataka")
+    p.cities = p.entity === 'city' ? [] : findCitiesInQuery(q);
+    p.states = findStatesInQuery(q);
+    return p;
+  }
+
+  // metric accessor for city/state aggregate objects (revenue, growth, retention, customers, density only —
+  // AOV/cluster-sales/score aren't meaningful at city/state level)
+  const AGG_METRIC_MAP = {
+    revenue:   a=>a.revenue,
+    growth:    a=>a.avgGrowth,
+    retention: a=>a.avgRetention,
+    customers: a=>a.customers,
+    density:   a=>a.density
+  };
+
+  // executes a structured query against RAW_DATA (pincodes), CLUSTER_DATA (clusters),
+  // or the city/state aggregate tables
+  function runStructuredQuery(p){
+    const isCluster = p.entity === 'cluster';
+    const isCity = p.entity === 'city';
+    const isState = p.entity === 'state';
+    const isAgg = isCity || isState;
+
+    let pool, accessor, m, entityLabel, nameOf;
+
+    if(isAgg){
+      pool = Object.values(isCity ? cityAggregates() : stateAggregates());
+      const aggMetric = ['revenue','growth','retention','customers','density'].includes(p.metric) ? p.metric : 'revenue';
+      m = { label: METRIC_MAP[aggMetric].label, fmt: METRIC_MAP[aggMetric].fmt };
+      accessor = AGG_METRIC_MAP[aggMetric];
+      entityLabel = isCity ? 'cities' : 'states';
+      nameOf = a => isCity ? a.city : a.state;
+      if(isCity && p.states.length) pool = pool.filter(a => p.states.includes(a.state.toLowerCase()));
+    } else {
+      pool = isCluster ? CLUSTER_DATA.slice() : RAW_DATA.filter(d=>d.cust >= currentMinCust);
+      m = METRIC_MAP[p.metric];
+      accessor = isCluster ? m.cl : m.pin;
+      entityLabel = isCluster ? 'clusters' : 'pincodes';
+      nameOf = d => isCluster ? `${d.city} cluster (#${d.rank})` : `${d.pin} (${d.loc}, ${d.city})`;
+      // if the metric doesn't exist for this entity (e.g. AOV for clusters), bail with a clear message
+      if(isCluster && accessor(CLUSTER_DATA[0]) === null && p.metric !== 'revenue'){
+        return `${m.label} isn't tracked at the cluster level — try asking about pincodes instead, e.g. "top 5 pincodes by ${m.label}".`;
+      }
+      if(p.grade) pool = pool.filter(d => d.grade === p.grade);
+      if(p.cities.length) pool = pool.filter(d => p.cities.includes(d.city.toLowerCase()));
+      if(p.states.length) pool = pool.filter(d => p.states.includes(d.state.toLowerCase()));
+    }
+
+    if(p.thresholdAbove != null) pool = pool.filter(d => { const v=accessor(d); return v!=null && v > p.thresholdAbove; });
+    if(p.thresholdBelow != null) pool = pool.filter(d => { const v=accessor(d); return v!=null && v < p.thresholdBelow; });
+
+    const scopeDesc = [
+      !isAgg && p.grade ? `${p.grade}-grade` : null,
+      !isAgg && p.cities.length ? p.cities.join('/') : null,
+      p.states.length ? p.states.join('/') : null,
+      p.thresholdAbove != null ? `${m.label} above ${p.thresholdAbove}` : null,
+      p.thresholdBelow != null ? `${m.label} below ${p.thresholdBelow}` : null
+    ].filter(Boolean).join(', ');
+    const scopeText = scopeDesc ? ` (${scopeDesc})` : '';
+
+    if(pool.length === 0) return `Nothing matches that filter${scopeText} — try loosening it.`;
+
+    if(p.wantsCount){
+      return `${pool.length.toLocaleString('en-IN')} ${entityLabel} match${scopeText}.`;
+    }
+    if(p.wantsAvg || p.wantsSum){
+      const vals = pool.map(accessor).filter(v=>v!=null);
+      if(vals.length===0) return `No data available for ${m.label}${scopeText}.`;
+      const sum = vals.reduce((s,v)=>s+v,0);
+      const val = p.wantsSum ? sum : sum/vals.length;
+      return `${p.wantsSum?'Total':'Average'} ${m.label}${scopeText}: ${fmtByType(val, m.fmt)} (across ${vals.length} ${entityLabel}).`;
+    }
+
+    // default / explicit rank request: sorted list
+    const withVal = pool.map(d=>({d, v:accessor(d)})).filter(x=>x.v!=null);
+    withVal.sort((a,b)=> p.direction==='asc' ? a.v-b.v : b.v-a.v);
+    const n = p.n || 5;
+    const top = withVal.slice(0, n);
+    if(top.length === 0) return `No ranked data available${scopeText}.`;
+
+    lastIntent = { type:'structured', p };
+
+    const lines = top.map((x,i)=> `${i+1}. ${nameOf(x.d)} — ${m.label} ${fmtByType(x.v, m.fmt)}`).join('.  ');
+
+    const dirWord = p.direction==='asc' ? 'Bottom' : 'Top';
+    let out = `${dirWord} ${top.length} ${entityLabel} by ${m.label}${scopeText}: ${lines}.`;
+
+    // brief reasoning line for a single top pincode result, using its factor score breakdown
+    if(!isCluster && !isAgg && top.length===1 && p.direction==='desc'){
+      const d = top[0].d;
+      const factors = [
+        {k:'revenue', v:d.s_revenue}, {k:'catchment', v:d.s_cluster}, {k:'AOV', v:d.s_aov},
+        {k:'growth', v:d.s_growth}, {k:'retention', v:d.s_retention}
+      ].sort((a,b)=>b.v-a.v);
+      out += ` Driven mainly by strong ${factors[0].k} (percentile ${Math.round(factors[0].v)}) and ${factors[1].k} (percentile ${Math.round(factors[1].v)}).`;
+    }
+    return out;
+  }
+
+  let lastIntent = null; // remembers context for bare follow-ups like "top 10" or "and retention?"
+
+  // ---- rich intent parser against RAW_DATA / CLUSTER_DATA already loaded on the page ----
+  function answerQuery(raw){
+    const q = raw.trim().toLowerCase();
+    if(!q) return "I didn't catch a question — try asking about a city, pincode, or the clusters.";
+
+    const citiesFound = findCitiesInQuery(q);
+    const wantsTop = /\btop\b|\bbest\b|\bhighest\b/.test(q);
+    const wantsCompare = /\bcompare\b|\bvs\b|\bversus\b/.test(q);
+    const wantsCombine = /\bcombine\b|\bclub\b|\bmerge\b|\btogether\b/.test(q);
+    const asksCount = /\bhow many\b|\bcount\b|\bnumber of\b/.test(q);
+
+    // ---------- follow-up: bare "top N" / "give top 10" referring to prior context ----------
+    const bareTopN = q.match(/^(give |show |list )?top\s*\d*\s*(more|please)?$/);
+    if(bareTopN && lastIntent){
+      const n = extractNumber(q, 10);
+      if(lastIntent.type === 'clusters') return listTopClusters(n);
+      if(lastIntent.type === 'city_pincodes') return listTopPincodesInCity(lastIntent.city, n);
+      if(lastIntent.type === 'structured'){ lastIntent.p.n = n; return runStructuredQuery(lastIntent.p); }
+    }
+
+    // ---------- structured query engine: handles filters, thresholds, grade, state, avg/sum/count,
+    // and any metric (growth/retention/density/aov/customers/cluster sales/score) across pincodes or clusters ----------
+    const statesFound = findStatesInQuery(q);
+    const wantsBottom = /\bbottom\b|\bworst\b|\blowest\b|\bweakest\b/.test(q);
+    const hasStructuredSignal = /growth|retention|density|\baov\b|catchment|cluster sale|\bscore\b/.test(q)
+      || /\bcit(y|ies)\b|\bstate(s)?\b/.test(q)
+      || statesFound.length > 0
+      || /\bhigh grade\b|\bmedium grade\b|\blow grade\b|\bgraded\b/.test(q)
+      || /(above|below|over|under|greater than|less than|more than|lower than)\s*-?\d/.test(q)
+      || /\baverage\b|\bavg\b|\bmean\b|\btotal\b|\bsum\b/.test(q)
+      || wantsBottom
+      || ((wantsTop || wantsBottom) && /\bpincode/.test(q) && citiesFound.length === 0);
+    if(hasStructuredSignal && citiesFound.length <= 1 && !wantsCompare && !wantsCombine){
+      const p = parseStructuredQuery(q);
+      return runStructuredQuery(p);
+    }
+
+    // ---------- "top N clusters" (no city) ----------
+    if(wantsTop && q.includes('cluster') && citiesFound.length === 0){
+      const n = extractNumber(q, 5);
+      lastIntent = { type:'clusters' };
+      return listTopClusters(n);
+    }
+
+    // ---------- multi-city compare ----------
+    if(wantsCompare && citiesFound.length >= 2){
+      return compareCities(citiesFound);
+    }
+
+    // ---------- multi-city combine/club ----------
+    if(wantsCombine && citiesFound.length >= 2){
+      return combineCities(citiesFound);
+    }
+
+    // ---------- "top N pincodes in <city>" / "top pincode in <city>" ----------
+    if(wantsTop && citiesFound.length === 1 && q.includes('pincode')){
+      const n = extractNumber(q, 1);
+      lastIntent = { type:'city_pincodes', city: citiesFound[0] };
+      return listTopPincodesInCity(citiesFound[0], n);
+    }
+    if(wantsTop && citiesFound.length === 1){
+      // "top pincode in Mumbai" without the word "pincode" explicitly
+      lastIntent = { type:'city_pincodes', city: citiesFound[0] };
+      return listTopPincodesInCity(citiesFound[0], 1);
+    }
+
+    // ---------- specific pincode lookup ----------
+    const pinMatch = q.match(/\b\d{6}\b/);
+    if(pinMatch){
+      const pin = pinMatch[0];
+      const rec = RAW_DATA.find(d => d.pin === pin);
+      if(!rec) return `I don't have pincode ${pin} in the current dataset.`;
+      const score = computeScore(rec);
+      lastIntent = null;
+      return `Pincode ${pin} (${rec.loc}, ${rec.city}): revenue ${fmtMoneyVA(rec.rev)}, ${rec.cust} customers, growth ${rec.growth==null?'not available':(rec.growth>=0?'+':'')+Math.round(rec.growth)+'%'}, retention ${Math.round(rec.retention)}%, BD score ${Math.round(score)}.`;
+    }
+
+    // ---------- "how many clusters" ----------
+    if(q.includes('cluster') && asksCount){
+      lastIntent = { type:'clusters' };
+      return `There are ${CLUSTER_DATA.length} clusters currently on the India map. Ask "top 10 clusters" to see the strongest ones.`;
+    }
+
+    // ---------- "how many pincodes" ----------
+    if(q.includes('pincode') && asksCount){
+      const n = RAW_DATA.filter(d=>d.cust>=currentMinCust).length;
+      return `At the current customer floor, ${n.toLocaleString('en-IN')} pincodes are eligible for ranking.`;
+    }
+
+    // ---------- single city summary (no top/compare keyword, just naming a city) ----------
+    if(citiesFound.length === 1 && !wantsTop){
+      const a = cityAggregates()[citiesFound[0]];
+      if(a){
+        lastIntent = { type:'city_pincodes', city: citiesFound[0] };
+        return `${a.city}: ${fmtMoneyVA(a.revenue)} revenue across ${a.pincodes} pincodes, ${fmtNum(a.customers)} customers, avg growth ${a.avgGrowth==null?'n/a':Math.round(a.avgGrowth)+'%'}, avg retention ${Math.round(a.avgRetention)}%.`;
+      }
+    }
+
+    // ---------- "show me <city>" / navigate ----------
+    if(citiesFound.length === 1 && (q.includes('show') || q.includes('find') || q.includes('go to') || q.includes('open') || q.includes('highlight') || q.includes('map'))){
+      const properCity = RAW_DATA.find(d=>d.city.toLowerCase()===citiesFound[0]).city;
+      switchTab('cityTab');
+      setTimeout(()=>{
+        citySelect.value = properCity;
+        selectedCity = properCity;
+        if(!cityGeoOpen){ document.getElementById('geotagCityToggle').click(); }
+        else { refreshCity(); }
+      }, 100);
+      return `Opening the City Heatmap for ${properCity}.`;
+    }
+
+    // ---------- fallback: search across pincode/city/state ----------
+    const terms = q.split(',').map(t=>t.trim()).filter(Boolean);
+    const matches = RAW_DATA.filter(d => terms.some(t => d.pin.includes(t) || d.city.toLowerCase().includes(t) || d.state.toLowerCase().includes(t)));
+    if(matches.length === 1){
+      const d = matches[0];
+      return `Found ${d.pin} (${d.loc}, ${d.city}) — revenue ${fmtMoneyVA(d.rev)}, ${d.cust} customers.`;
+    }
+    if(matches.length > 1){
+      return `Found ${matches.length} matching pincodes. Try "top 10 pincodes in <city>" or "compare <city A> and <city B>" for a sharper answer.`;
+    }
+
+    return "Try things like: \"top 10 clusters in Karnataka\", \"pincodes with growth above 50% in Maharashtra\", \"average retention in Bengaluru\", \"total revenue for high grade clusters\", \"bottom 5 pincodes by growth\", \"compare Mumbai and Bengaluru\", \"club Mumbai and Pune\", or a specific pincode/score lookup.";
+  }
+
+  function listTopClusters(n){
+    const top = CLUSTER_DATA.slice(0, n);
+    const lines = top.map(c => `#${c.rank} ${c.city} (${c.state}) — ${fmtMoneyVA(c.rev)}, ${c.n} pincodes, ${c.grade} grade`).join('. ');
+    return `Top ${top.length} clusters: ${lines}.`;
+  }
+
+  function listTopPincodesInCity(cityLower, n){
+    const inCity = RAW_DATA.filter(d => d.city.toLowerCase() === cityLower && d.cust >= 30);
+    if(inCity.length === 0) return `I don't have enough data for that city to rank pincodes confidently.`;
+    inCity.sort((a,b)=> computeScore(b) - computeScore(a));
+    const top = inCity.slice(0, n);
+    const properCity = top[0].city;
+    if(n === 1){
+      const t = top[0];
+      return `In ${properCity}, the top pincode is ${t.pin} (${t.loc}) — revenue ${fmtMoneyVA(t.rev)}, ${t.cust} customers, growth ${t.growth==null?'not available':(t.growth>=0?'+':'')+Math.round(t.growth)+'%'}.`;
+    }
+    const lines = top.map((t,i)=> `${i+1}. ${t.pin} (${t.loc}) — ${fmtMoneyVA(t.rev)}`).join('. ');
+    return `Top ${top.length} pincodes in ${properCity}: ${lines}.`;
+  }
+
+  function compareCities(citiesLower){
+    const agg = cityAggregates();
+    const rows = citiesLower.map(c => agg[c]).filter(Boolean);
+    if(rows.length < 2) return "I need at least two valid city names to compare.";
+    const lines = rows.map(a => `${a.city}: ${fmtMoneyVA(a.revenue)} revenue, ${fmtNum(a.customers)} customers, avg growth ${a.avgGrowth==null?'n/a':Math.round(a.avgGrowth)+'%'}, avg retention ${Math.round(a.avgRetention)}%`).join('.  ');
+    const winner = rows.reduce((best,a)=> a.revenue>best.revenue?a:best, rows[0]);
+    return `${lines}. On revenue, ${winner.city} leads.`;
+  }
+
+  function combineCities(citiesLower){
+    const agg = cityAggregates();
+    const rows = citiesLower.map(c => agg[c]).filter(Boolean);
+    if(rows.length < 2) return "I need at least two valid city names to combine.";
+    const revenue = rows.reduce((s,a)=>s+a.revenue,0);
+    const customers = rows.reduce((s,a)=>s+a.customers,0);
+    const pincodes = rows.reduce((s,a)=>s+a.pincodes,0);
+    const growthVals = rows.filter(a=>a.avgGrowth!=null).map(a=>a.avgGrowth);
+    const avgGrowth = growthVals.length ? growthVals.reduce((s,v)=>s+v,0)/growthVals.length : null;
+    const names = rows.map(a=>a.city).join(' + ');
+    return `Combined (${names}): ${fmtMoneyVA(revenue)} revenue across ${pincodes} pincodes, ${fmtNum(customers)} customers, blended avg growth ${avgGrowth==null?'n/a':Math.round(avgGrowth)+'%'}.`;
+  }
+
+  function bestCityByMetric(q){
+    const agg = cityAggregates();
+    const rows = Object.values(agg).filter(a=>a.pincodes >= 3); // ignore tiny/noisy cities
+    let key = 'revenue', label = 'revenue';
+    if(q.includes('growth')){ key='avgGrowth'; label='average growth'; }
+    else if(q.includes('retention')){ key='avgRetention'; label='average retention'; }
+    else if(q.includes('customer')){ key='customers'; label='customers'; }
+    else if(q.includes('density') || q.includes('aov')){ key='density'; label='revenue density'; }
+    const valid = rows.filter(a=>a[key]!=null);
+    if(valid.length===0) return "I don't have enough data to answer that.";
+    valid.sort((a,b)=> b[key]-a[key]);
+    const top3 = valid.slice(0,3).map((a,i)=> `${i+1}. ${a.city} (${key==='revenue'||key==='customers'?fmtMoneyVA(a[key]):Math.round(a[key])+(key.includes('avg')?'%':'')})`).join('. ');
+    return `Top by ${label}: ${top3}.`;
+  }
+
+  function handleQuery(text){
+    if(!text.trim()) return;
+    addMsg(text, 'user');
+    const answer = answerQuery(text);
+    setTimeout(()=>{ addMsg(answer, 'bot'); speak(answer); }, 250);
+  }
+
+  vaSendBtn.addEventListener('click', ()=>{ handleQuery(vaTextInput.value); vaTextInput.value=''; });
+  vaTextInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ handleQuery(vaTextInput.value); vaTextInput.value=''; } });
+
+  // ---- voice input via Web Speech API (Chrome/Edge only) ----
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(SR){
+    const recognizer = new SR();
+    recognizer.lang = 'en-IN';
+    recognizer.interimResults = false;
+    recognizer.maxAlternatives = 1;
+    let listening = false;
+
+    vaMicBtn.addEventListener('click', ()=>{
+      if(listening){ recognizer.stop(); return; }
+      try{ recognizer.start(); listening = true; vaMicBtn.classList.add('listening'); vaHint.textContent = 'Listening…'; }
+      catch(e){ /* already started */ }
+    });
+    recognizer.onresult = (e)=>{
+      const transcript = e.results[0][0].transcript;
+      handleQuery(transcript);
+    };
+    recognizer.onend = ()=>{ listening = false; vaMicBtn.classList.remove('listening'); vaHint.textContent = ''; };
+    recognizer.onerror = ()=>{ listening = false; vaMicBtn.classList.remove('listening'); vaHint.textContent = 'Voice input failed — try typing instead.'; };
+  } else {
+    vaMicBtn.addEventListener('click', ()=>{
+      vaHint.textContent = "Voice input isn't supported in this browser — try Chrome or Edge, or just type below.";
+    });
+  }
+})();
 </script>
 </body>
 </html>
