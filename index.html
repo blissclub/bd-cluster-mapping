@@ -138,6 +138,9 @@
   .popup-row{ display:flex; justify-content:space-between; gap:14px; padding:2px 0; color:var(--text-dim); }
   .popup-row b{ color:var(--text); font-family:var(--mono); }
   .leaflet-container{ background:#0d1220; }
+  .leaflet-tooltip.hover-tip{ background:var(--panel); color:var(--text); border:1px solid var(--border);
+    border-radius:8px; font-family:var(--sans); font-size:11.5px; padding:6px 10px; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
+  .leaflet-tooltip.hover-tip::before{ display:none; }
 
   .table-wrap{ margin-top:16px; }
   .table-toolbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px; flex-wrap:wrap; }
@@ -179,6 +182,19 @@
   .add-param-box code{ background:var(--panel-2); padding:1px 5px; border-radius:4px; color:var(--coral); font-family:var(--mono); }
 
   .footer-note{ margin-top:18px; font-size:11px; color:var(--text-faint); text-align:center; }
+
+  .score-breakdown{ position:fixed; z-index:10500; background:var(--panel); border:1px solid var(--border);
+    border-radius:10px; padding:14px 16px; width:280px; box-shadow:0 10px 30px rgba(0,0,0,0.5); font-size:12px; }
+  .score-breakdown-title{ font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px; }
+  .score-breakdown-row{ display:flex; justify-content:space-between; align-items:center; padding:5px 0;
+    border-bottom:1px solid var(--border); gap:8px; }
+  .score-breakdown-row:last-child{ border-bottom:none; }
+  .score-breakdown-name{ color:var(--text-dim); font-size:11.5px; }
+  .score-breakdown-vals{ font-family:var(--mono); color:var(--text); font-size:11.5px; white-space:nowrap; }
+  .score-breakdown-total{ display:flex; justify-content:space-between; margin-top:8px; padding-top:8px;
+    border-top:1px solid var(--border); font-weight:700; }
+  .score-breakdown-close{ position:absolute; top:8px; right:10px; background:none; border:none;
+    color:var(--text-faint); cursor:pointer; font-size:14px; }
 
   /* ---- Voice Assistant ---- */
   .va-trigger{ position:fixed; bottom:24px; left:24px; z-index:9500; width:52px; height:52px; border-radius:50%;
@@ -310,6 +326,7 @@
               <th data-key="city" class="txt">City</th>
               <th data-key="state" class="txt">State</th>
               <th data-key="rev">Revenue</th>
+              <th data-key="aov">AOV (₹'000)</th>
               <th data-key="csales">Cluster Sales</th>
               <th data-key="growth">Growth</th>
               <th data-key="retention">Retention</th>
@@ -384,7 +401,7 @@
               <th data-key="csales">Cluster Sales</th>
               <th data-key="growth">Growth</th>
               <th data-key="retention">Retention</th>
-              <th data-key="grade">Grade</th>
+              <th data-key="score">BD Score</th>
             </tr>
           </thead>
           <tbody id="cityTblBody"></tbody>
@@ -546,6 +563,40 @@ function computeScore(d){
   return score/100;
 }
 
+// ---- click-to-inspect: shows exactly how each weighted factor built this pincode's BD Score ----
+function showScoreBreakdown(d, evt){
+  document.querySelectorAll('.score-breakdown').forEach(el=>el.remove());
+  const box = document.createElement('div');
+  box.className = 'score-breakdown';
+  const totalScore = computeScore(d);
+  const rows = FACTORS.map(f=>{
+    const raw = d[f.key];
+    const weight = currentWeights[f.key];
+    const contribution = weight * raw / 100;
+    return `<div class="score-breakdown-row">
+      <span class="score-breakdown-name">${f.name} (${Math.round(weight)}%)</span>
+      <span class="score-breakdown-vals">${Math.round(raw)} pct → ${contribution.toFixed(1)}</span>
+    </div>`;
+  }).join('');
+  box.innerHTML = `
+    <button class="score-breakdown-close" id="scoreBreakdownClose">&times;</button>
+    <div class="score-breakdown-title">${d.pin} — ${d.loc || d.city}</div>
+    ${rows}
+    <div class="score-breakdown-total"><span>BD Score</span><span>${Math.round(totalScore)}</span></div>
+  `;
+  document.body.appendChild(box);
+  const x = Math.min(evt.clientX, window.innerWidth - 300);
+  const y = Math.min(evt.clientY, window.innerHeight - 260);
+  box.style.left = x + 'px';
+  box.style.top = y + 'px';
+  document.getElementById('scoreBreakdownClose').addEventListener('click', ()=> box.remove());
+  setTimeout(()=>{
+    document.addEventListener('click', function outsideClick(ev){
+      if(!box.contains(ev.target)){ box.remove(); document.removeEventListener('click', outsideClick); }
+    });
+  }, 10);
+}
+
 // ---------- maps ----------
 // Robust tile loader: falls back to a second provider if the primary fails silently
 function addRobustTileLayer(targetMap){
@@ -636,6 +687,10 @@ function renderMap(){
       opacity: isLow ? 0.5 : 0.95
     });
     const pinList = d.top_pins.join(', ') + (d.n > d.top_pins.length ? ` +${d.n - d.top_pins.length} more` : '');
+    marker.bindTooltip(
+      `<b>${d.city}</b> (${d.grade}) — ${fmtMoney(d.rev)}, ${d.n} pincodes, score ${d.score}`,
+      { sticky:true, direction:'top', className:'hover-tip' }
+    );
     marker.bindPopup(`
       <div class="popup-title">${d.city} Cluster <span class="grade-pill grade-${d.grade}">${d.grade}</span></div>
       <div class="popup-row"><span>Rank</span><b>#${d.rank} of ${CLUSTER_DATA.length}</b></div>
@@ -683,12 +738,17 @@ function renderTable(data){
       <td class="txt">${d.city}</td>
       <td class="txt">${d.state}</td>
       <td>${fmtMoney(d.rev)}</td>
+      <td>₹${(d.aov/1000).toFixed(2)}K</td>
       <td>${fmtMoney(d.csales)}</td>
       <td class="${gc}">${gt}</td>
       <td>${fmtPct(d.retention)}</td>
-      <td class="score-cell">${fmtScore(d.score)} <span class="grade-pill grade-${d.grade}">${d.grade}</span></td>
+      <td class="score-cell" data-scorecell="1" title="Click for score breakdown" style="cursor:help;">${fmtScore(d.score)} <span class="grade-pill grade-${d.grade}">${d.grade}</span></td>
     `;
-    tr.addEventListener('click', ()=>{
+    tr.addEventListener('click', (e)=>{
+      if(e.target.closest('[data-scorecell]')){
+        showScoreBreakdown(d, e);
+        return;
+      }
       map.flyTo([d.lat,d.lon], 11, {duration:0.6});
     });
     frag.appendChild(tr);
@@ -873,6 +933,10 @@ function renderCityMap(data){
       fillColor: isHigh ? gradeColor('high') : '#333B54',
       fillOpacity: isHigh ? 0.32 : 0.08
     });
+    poly.bindTooltip(
+      `<b>${d.pin} — ${d.loc}</b> (${d.grade}) — ${fmtMoney(d.rev)}, growth ${fmtGrowth(d)}`,
+      { sticky:true, direction:'top', className:'hover-tip' }
+    );
     poly.bindPopup(`
       <div class="popup-title">${d.loc} <span class="grade-pill grade-${d.grade}">${d.grade}</span></div>
       <div class="popup-row"><span>Pincode</span><b>${d.pin}</b></div>
@@ -898,6 +962,10 @@ function renderCityMap(data){
       fillColor: isHigh ? gradeColor(d.grade) : '#5D6685',
       fillOpacity: isHigh ? 0.9 : 0.25, weight: isHigh ? 1.6 : 1, opacity: isHigh ? 1 : 0.4
     });
+    marker.bindTooltip(
+      `<b>${d.pin} — ${d.loc}</b> (${d.grade}) — ${fmtMoney(d.rev)}, growth ${fmtGrowth(d)}`,
+      { sticky:true, direction:'top', className:'hover-tip' }
+    );
     cityMarkerLayer.addLayer(marker);
     bounds.push([d.lat,d.lon]);
   });
@@ -940,9 +1008,14 @@ function renderCityTable(data){
       <td>${fmtMoney(d.csales)}</td>
       <td class="${gc}">${gt}</td>
       <td>${fmtPct(d.retention)}</td>
-      <td><span class="grade-pill grade-${d.grade}">${d.grade}</span></td>
+      <td class="score-cell" data-scorecell="1" title="Click for score breakdown" style="cursor:help;">${fmtScore(d.score)} <span class="grade-pill grade-${d.grade}">${d.grade}</span></td>
     `;
-    tr.addEventListener('click', ()=>{ cityMap.flyTo([d.lat,d.lon], 13, {duration:0.6});
+    tr.addEventListener('click', (e)=>{
+      if(e.target.closest('[data-scorecell]')){
+        showScoreBreakdown(d, e);
+        return;
+      }
+      cityMap.flyTo([d.lat,d.lon], 13, {duration:0.6});
       cityMarkerLayer.eachLayer(m=>{ if(m.getLatLng().lat===d.lat && m.getLatLng().lng===d.lon) setTimeout(()=>m.openPopup(),650); }); });
     frag.appendChild(tr);
   });
@@ -953,11 +1026,15 @@ function renderCityStats(data){
   const totalCust = data.reduce((s,d)=>s+d.cust,0);
   const avgGrowth = data.filter(d=>d.growth!=null);
   const gAvg = avgGrowth.length ? avgGrowth.reduce((s,d)=>s+d.growth,0)/avgGrowth.length : null;
+  // city-level BD score: revenue-weighted average of every pincode's own BD score,
+  // so a city's number reflects where its real revenue actually sits, not a flat average
+  const cityScore = totalRev > 0 ? data.reduce((s,d)=>s+d.score*d.rev,0)/totalRev : 0;
   document.getElementById('cityStatsRow').innerHTML = `
     <div class="city-stat">Pincodes <b>${data.length}</b></div>
     <div class="city-stat">Revenue <b>${fmtMoney(totalRev)}</b></div>
     <div class="city-stat">Customers <b>${fmtNum(totalCust)}</b></div>
     <div class="city-stat">Avg Growth <b>${gAvg==null?'n/a':Math.round(gAvg)+'%'}</b></div>
+    <div class="city-stat">City BD Score <b>${Math.round(cityScore)}</b></div>
   `;
 }
 
