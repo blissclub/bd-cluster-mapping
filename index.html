@@ -1026,13 +1026,10 @@ function cityFlagSearch(inputId){
 
   setTimeout(()=>{
     if(cityFlagLayer) cityFlagLayer.clearLayers();
-    // hide the regular top-5 labels while a search flag is shown — avoids two labels
-    // stacking on the same point if the searched pincode happens to be a top-5 one
-    if(cityLabelLayer && cityMap.hasLayer(cityLabelLayer)) cityMap.removeLayer(cityLabelLayer);
     const flagIcon = L.divIcon({
       className: 'locality-label',
       html: `<div class="tag" style="border-color:#22D3EE; color:#22D3EE; font-size:13px;">📍 ${match.loc}</div>`,
-      iconSize:[0,0], iconAnchor:[-10, 30]
+      iconSize:[0,0], iconAnchor:[-10, 60]
     });
     L.marker([match.lat, match.lon], { icon: flagIcon, zIndexOffset: 1000 }).addTo(cityFlagLayer);
     const ring = L.circleMarker([match.lat, match.lon], {
