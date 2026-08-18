@@ -98,7 +98,7 @@
   .legend-bar{ height:8px; flex:1; border-radius:4px; background:linear-gradient(90deg,#3E8FB1,#6B7FA8,#B36B7A,#FF6B57); }
 
   #map, #cityMap{ height:560px; border-radius:14px; background:#0d1220; position:relative; }
-  .map-expand-btn{ position:absolute; bottom:16px; right:16px; z-index:10001; background:rgba(18,24,41,0.9);
+  .map-expand-btn{ position:absolute; top:112px; right:16px; z-index:10001; background:rgba(18,24,41,0.9);
     border:1px solid var(--border); color:var(--text-dim); width:34px; height:34px; border-radius:8px;
     cursor:pointer; display:flex; align-items:center; justify-content:center; }
   .map-expand-btn:hover{ border-color:var(--coral); color:var(--coral); }
@@ -121,7 +121,7 @@
     cursor:pointer; font-family:var(--sans); }
   .map-reset-btn:hover{ border-color:var(--coral); color:var(--coral); }
 
-  .map-float-search{ position:absolute; top:76px; left:16px; z-index:10001; display:flex; gap:6px; width:260px; }
+  .map-float-search{ position:absolute; top:64px; right:16px; z-index:10001; display:flex; gap:6px; width:260px; }
 
   .map-result-bar{ position:absolute; bottom:16px; left:16px; right:16px; z-index:10001;
     background:rgba(12,16,28,0.55); border:1px solid var(--border); border-radius:10px;
@@ -130,14 +130,19 @@
   .map-result-bar b{ color:var(--text); }
   .map-result-bar .mrb-title{ font-weight:700; color:var(--coral); white-space:nowrap; }
   .map-result-bar .mrb-item{ color:var(--text-dim); white-space:nowrap; }
+
+  .map-legend-note{ position:absolute; top:160px; right:16px; z-index:10001;
+    background:rgba(12,16,28,0.85); border:1px solid var(--border); border-radius:8px;
+    padding:8px 12px; display:flex; flex-direction:column; gap:5px; font-size:10.5px; color:var(--text-dim); }
+  .map-legend-note .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:6px; vertical-align:middle; }
   .map-float-search .search{ background:rgba(18,24,41,0.92); font-size:12px; padding:8px 12px; width:auto; flex:1; }
   .map-float-search .reset-btn{ background:rgba(18,24,41,0.92); padding:0 12px; }
 
-  .map-weights-btn{ position:absolute; bottom:16px; left:16px; z-index:10001; background:rgba(18,24,41,0.9);
+  .map-weights-btn{ position:absolute; top:90px; left:16px; z-index:10001; background:rgba(18,24,41,0.9);
     border:1px solid var(--border); color:var(--text-dim); width:34px; height:34px; border-radius:8px;
     cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center; }
   .map-weights-btn:hover{ border-color:var(--coral); color:var(--coral); }
-  .map-mini-weights{ position:absolute; bottom:58px; left:16px; z-index:10002; width:260px;
+  .map-mini-weights{ position:absolute; top:130px; left:16px; z-index:10002; width:260px;
     background:rgba(12,16,28,0.97); border:1px solid var(--border); border-radius:10px; padding:12px 14px;
     display:none; box-shadow:0 8px 24px rgba(0,0,0,0.5); }
   .map-mini-weights.open{ display:block; }
@@ -151,6 +156,7 @@
   .locality-label .tag.grade-high{ border-color:var(--coral); color:var(--coral); }
   .locality-label .tag.grade-medium{ border-color:var(--amber); color:var(--amber); }
   .locality-label .tag.grade-low{ border-color:var(--teal); color:var(--teal); }
+  .locality-label .tag.rank-label{ border-color:#C084FC; color:#C084FC; font-weight:700; }
   .grade-pill{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:10.5px; font-weight:700; }
   .grade-pill.grade-high{ background:rgba(255,107,87,.18); color:var(--coral); }
   .grade-pill.grade-medium{ background:rgba(251,191,107,.18); color:var(--amber); }
@@ -420,6 +426,11 @@
             <button class="map-weights-btn" id="mapWeightsBtn" title="Adjust weights">⚙</button>
             <div class="map-mini-weights" id="mapMiniWeights"></div>
             <button class="map-reset-btn" id="cityResetView">Reset View</button>
+            <div class="map-legend-note">
+              <span><span class="dot" style="background:#FFD700;"></span>Yellow — our store</span>
+              <span><span class="dot" style="background:#C084FC;"></span>Purple — high BD score location</span>
+              <span><span class="dot" style="border:2px dashed #FFFFFF; background:transparent;"></span>White circle — searched pincode</span>
+            </div>
             <button class="map-expand-btn" id="cityMapExpandBtn" title="Full view">⤢</button>
             <button class="map-exit-btn" id="cityMapExitBtn">✕ Exit Full View</button>
           </div>
@@ -1026,17 +1037,11 @@ function cityFlagSearch(inputId){
 
   setTimeout(()=>{
     if(cityFlagLayer) cityFlagLayer.clearLayers();
-    const flagIcon = L.divIcon({
-      className: 'locality-label',
-      html: `<div class="tag" style="border-color:#22D3EE; color:#22D3EE; font-size:13px;">📍 ${match.loc}</div>`,
-      iconSize:[0,0], iconAnchor:[-10, 60]
-    });
-    L.marker([match.lat, match.lon], { icon: flagIcon, zIndexOffset: 1000 }).addTo(cityFlagLayer);
     const ring = L.circleMarker([match.lat, match.lon], {
-      radius: 16, color:'#22D3EE', weight:3, fillOpacity:0, opacity:0.9, dashArray:'4,4'
+      radius: 16, color:'#FFFFFF', weight:2.5, fillOpacity:0.06, fillColor:'#FFFFFF', opacity:0.85, dashArray:'3,5'
     }).addTo(cityFlagLayer);
     cityMap.invalidateSize();
-    cityMap.flyTo([match.lat, match.lon], 14, { duration:0.7 });
+    cityMap.flyTo([match.lat, match.lon], cityMap.getZoom(), { duration:0.7 });
 
     const resultHtml = `
       <b>${match.pin} — ${match.loc}, ${match.city}</b><br>
@@ -1106,10 +1111,10 @@ function renderCityMap(data){
     const isHigh = d.grade === 'high';
     const poly = L.polygon(latlngs, {
       color: isHigh ? gradeColor('high') : '#3A4258',
-      weight: isHigh ? 1.8 : 0.5,
-      opacity: isHigh ? 0.4 : 0.15,
+      weight: isHigh ? 1.1 : 0.5,
+      opacity: isHigh ? 0.13 : 0.08,
       fillColor: isHigh ? gradeColor('high') : '#3A4258',
-      fillOpacity: isHigh ? 0.08 : 0.025
+      fillOpacity: isHigh ? 0.025 : 0.015
     });
     poly.bindTooltip(
       `<b>${d.pin} — ${d.loc}</b> (${d.grade}) — ${fmtMoney(d.rev)}, growth ${fmtGrowth(d)}`,
@@ -1155,7 +1160,7 @@ function renderCityMap(data){
     if(!Number.isFinite(d.lat) || !Number.isFinite(d.lon)) return;
     const icon = L.divIcon({
       className:'locality-label',
-      html:`<div class="tag grade-${d.grade}">#${i+1} ${d.loc}</div>`,
+      html:`<div class="tag rank-label">#${i+1} ${d.loc}</div>`,
       // spread both horizontally and vertically by rank so labels don't stack on each other
       iconSize:[0,0], iconAnchor:[-10 - (i%2)*130, (i*20) - 40]
     });
