@@ -157,6 +157,12 @@
   .locality-label .tag.grade-medium{ border-color:var(--amber); color:var(--amber); }
   .locality-label .tag.grade-low{ border-color:var(--teal); color:var(--teal); }
   .locality-label .tag.rank-label{ border-color:#C084FC; color:#C084FC; font-weight:700; }
+  .search-callout{ display:flex; flex-direction:column; align-items:center; }
+  .search-callout-tag{ background:rgba(18,24,41,0.95); border:1.5px solid #FFFFFF; color:#FFFFFF;
+    font-size:12px; font-weight:700; padding:4px 10px; border-radius:6px; white-space:nowrap;
+    box-shadow:0 0 10px rgba(255,255,255,0.25); }
+  .search-callout-arrow{ width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent;
+    border-top:7px solid #FFFFFF; margin-top:-1px; }
   .grade-pill{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:10.5px; font-weight:700; }
   .grade-pill.grade-high{ background:rgba(255,107,87,.18); color:var(--coral); }
   .grade-pill.grade-medium{ background:rgba(251,191,107,.18); color:var(--amber); }
@@ -399,7 +405,7 @@
           <div class="select-row" style="margin-bottom:0; min-width:260px;">
             <label>Search pincode or area</label>
             <div style="display:flex; gap:6px;">
-              <input class="search" id="cityFlagSearch" style="width:auto; flex:1;" placeholder="e.g. 560034 or Koramangala" />
+              <input class="search" id="cityFlagSearch" style="width:auto; flex:1;" placeholder="e.g. 560034, Koramangala (comma for multiple)" />
               <button class="reset-btn" id="cityFlagSearchBtn" style="padding:0 14px;">Find</button>
             </div>
           </div>
@@ -419,7 +425,7 @@
             <div id="cityMap"></div>
             <div class="map-city-label" id="mapCityLabel">—</div>
             <div class="map-float-search" id="mapFloatSearch">
-              <input class="search" id="cityFlagSearchFloat" placeholder="Search pincode or area…" />
+              <input class="search" id="cityFlagSearchFloat" placeholder="e.g. 110001, Andheri (comma for multiple)" />
               <button class="reset-btn" id="cityFlagSearchFloatBtn">Find</button>
             </div>
             <div class="map-result-bar" id="mapFloatResult" style="display:none;"></div>
@@ -1005,65 +1011,84 @@ function renderCityStores(){
 function cityFlagSearch(inputId){
   inputId = inputId || 'cityFlagSearch';
   const raw = document.getElementById(inputId).value.trim().toLowerCase();
-  // keep both search boxes (panel + floating on-map) in sync regardless of which one was used
   ['cityFlagSearch','cityFlagSearchFloat'].forEach(id=>{
     const el = document.getElementById(id);
     if(el && id !== inputId) el.value = raw;
   });
   const resultBox = document.getElementById('cityFlagResult');
-  if(!raw){ resultBox.style.display='none'; return; }
+  const floatBox = document.getElementById('mapFloatResult');
+  if(!raw){ resultBox.style.display='none'; if(floatBox) floatBox.style.display='none'; return; }
 
-  const match = RAW_DATA.find(d => d.pin === raw) ||
-    RAW_DATA.find(d => d.pin.includes(raw) || d.loc.toLowerCase().includes(raw)) ;
+  const terms = raw.split(',').map(t=>t.trim()).filter(Boolean);
+  const seen = new Set();
+  const matches = [];
+  terms.forEach(term=>{
+    const m = RAW_DATA.find(d => d.pin === term) ||
+      RAW_DATA.find(d => d.pin.includes(term) || d.loc.toLowerCase().includes(term));
+    if(m && !seen.has(m.pin) && Number.isFinite(m.lat) && Number.isFinite(m.lon)){
+      seen.add(m.pin);
+      matches.push(m);
+    }
+  });
 
-  if(!match){
+  if(matches.length === 0){
     resultBox.style.display = 'block';
     resultBox.innerHTML = `No pincode or area matching "${raw}" found in the dataset.`;
+    if(floatBox) floatBox.style.display = 'none';
     return;
   }
 
-  if(!Number.isFinite(match.lat) || !Number.isFinite(match.lon)){
-    resultBox.style.display = 'block';
-    resultBox.innerHTML = `Found ${match.pin} but its location data looks invalid — can't flag it on the map.`;
-    return;
-  }
-
-  const needsCitySwitch = match.city !== selectedCity;
+  // if matches span multiple cities, jump to the first match's city and only flag matches within it
+  const targetCity = matches[0].city;
+  const inCity = matches.filter(m => m.city === targetCity);
+  const elsewhere = matches.filter(m => m.city !== targetCity);
+  const needsCitySwitch = targetCity !== selectedCity;
   if(needsCitySwitch){
-    citySelect.value = match.city;
-    selectedCity = match.city;
+    citySelect.value = targetCity;
+    selectedCity = targetCity;
     refreshCity();
   }
 
   setTimeout(()=>{
     if(cityFlagLayer) cityFlagLayer.clearLayers();
-    const ring = L.circleMarker([match.lat, match.lon], {
-      radius: 16, color:'#FFFFFF', weight:2.5, fillOpacity:0.06, fillColor:'#FFFFFF', opacity:0.85, dashArray:'3,5'
-    }).addTo(cityFlagLayer);
+    const bounds = [];
+    inCity.forEach(match=>{
+      L.circleMarker([match.lat, match.lon], {
+        radius: 16, color:'#FFFFFF', weight:2.5, fillOpacity:0.06, fillColor:'#FFFFFF', opacity:0.85, dashArray:'3,5'
+      }).addTo(cityFlagLayer);
+      const calloutIcon = L.divIcon({
+        className: 'locality-label',
+        html: `<div class="search-callout"><div class="search-callout-tag">Searched: ${match.pin}</div><div class="search-callout-arrow"></div></div>`,
+        iconSize:[0,0], iconAnchor:[-8, 46]
+      });
+      L.marker([match.lat, match.lon], { icon: calloutIcon, zIndexOffset: 1500 }).addTo(cityFlagLayer);
+      bounds.push([match.lat, match.lon]);
+    });
     cityMap.invalidateSize();
-    cityMap.flyTo([match.lat, match.lon], cityMap.getZoom(), { duration:0.7 });
+    if(bounds.length === 1){
+      cityMap.flyTo(bounds[0], cityMap.getZoom(), { duration:0.7 });
+    } else {
+      cityMap.flyToBounds(bounds, { padding:[80,80], maxZoom:cityMap.getZoom(), duration:0.7 });
+    }
 
-    const resultHtml = `
+    const rowsHtml = inCity.map(match => `
       <b>${match.pin} — ${match.loc}, ${match.city}</b><br>
       Revenue: ${fmtMoney(match.rev)} &middot; Customers: ${fmtNum(match.cust)} &middot; AOV: ₹${fmtNum(match.aov)}<br>
       Cluster Sales (${match.cradius}km): ${fmtMoney(match.csales)} &middot; Growth: ${fmtGrowth(match)} &middot; Retention: ${fmtPct(match.retention)}<br>
       BD Score: ${fmtScore(computeScore(match))}
-    `;
+    `).join('<hr style="border-color:var(--border); margin:8px 0;">');
+    const elsewhereNote = elsewhere.length ? `<div style="margin-top:6px; color:var(--text-faint);">${elsewhere.length} more result(s) in other cities — search that city to see them.</div>` : '';
     resultBox.style.display = 'block';
-    resultBox.innerHTML = resultHtml;
-    const floatBox = document.getElementById('mapFloatResult');
+    resultBox.innerHTML = rowsHtml + elsewhereNote;
+
     if(floatBox){
       floatBox.style.display = 'flex';
-      floatBox.innerHTML = `
-        <span class="mrb-title">${match.pin} — ${match.loc}, ${match.city}</span>
-        <span class="mrb-item">Revenue <b>${fmtMoney(match.rev)}</b></span>
-        <span class="mrb-item">Customers <b>${fmtNum(match.cust)}</b></span>
-        <span class="mrb-item">AOV <b>₹${fmtNum(match.aov)}</b></span>
-        <span class="mrb-item">Cluster Sales (${match.cradius}km) <b>${fmtMoney(match.csales)}</b></span>
+      floatBox.innerHTML = inCity.map(match => `
+        <span class="mrb-title">${match.pin} — ${match.loc}</span>
+        <span class="mrb-item">Rev <b>${fmtMoney(match.rev)}</b></span>
         <span class="mrb-item">Growth <b>${fmtGrowth(match)}</b></span>
-        <span class="mrb-item">Retention <b>${fmtPct(match.retention)}</b></span>
-        <span class="mrb-item">BD Score <b>${fmtScore(computeScore(match))}</b></span>
-      `;
+        <span class="mrb-item">Score <b>${fmtScore(computeScore(match))}</b></span>
+      `).join('<span class="mrb-item">|</span>');
     }
   }, needsCitySwitch ? 150 : 0);
 }
@@ -1158,11 +1183,16 @@ function renderCityMap(data){
   const labelCount = Math.min(5, data.length);
   data.slice(0, labelCount).forEach((d,i)=>{
     if(!Number.isFinite(d.lat) || !Number.isFinite(d.lon)) return;
+    // small anchor dot at the TRUE point, so the label always has a clear, unambiguous marker to point to
+    L.circleMarker([d.lat,d.lon], {
+      radius:4, color:'#C084FC', fillColor:'#C084FC', fillOpacity:0.9, weight:1.5, opacity:1
+    }).addTo(cityLabelLayer);
     const icon = L.divIcon({
       className:'locality-label',
       html:`<div class="tag rank-label">#${i+1} ${d.loc}</div>`,
-      // spread both horizontally and vertically by rank so labels don't stack on each other
-      iconSize:[0,0], iconAnchor:[-10 - (i%2)*130, (i*20) - 40]
+      // small stagger only — enough to reduce label-on-label overlap without disconnecting
+      // the text from its actual marker point (previous version offset up to 140px, too far)
+      iconSize:[0,0], iconAnchor:[-14, (i%3)*14 - 14]
     });
     L.marker([d.lat,d.lon], { icon, interactive:false }).addTo(cityLabelLayer);
   });
