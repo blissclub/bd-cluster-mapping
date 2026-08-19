@@ -163,6 +163,16 @@
     box-shadow:0 0 10px rgba(255,255,255,0.25); }
   .search-callout-arrow{ width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent;
     border-top:7px solid #FFFFFF; margin-top:-1px; }
+  .rank-callout{ display:flex; align-items:center; }
+  .rank-callout-line{ width:22px; height:1.5px; background:#C084FC; opacity:0.8; flex-shrink:0; }
+  .rank-callout-text{ background:rgba(18,24,41,0.9); border:1px solid #C084FC; color:#C084FC;
+    font-size:11px; font-weight:600; padding:3px 8px; border-radius:5px; white-space:nowrap; margin-left:2px; }
+
+  .dyn-label{ font-size:11px; font-weight:600; padding:3px 9px; border-radius:5px; white-space:nowrap;
+    background:rgba(18,24,41,0.92); pointer-events:none; }
+  .dyn-label.dyn-rank{ border:1px solid #C084FC; color:#C084FC; }
+  .dyn-label.dyn-store{ border:1px solid #FFD700; color:#FFD700; }
+  .dyn-label.dyn-search{ border:1.5px solid #FFFFFF; color:#FFFFFF; box-shadow:0 0 10px rgba(255,255,255,0.3); font-size:12px; }
   .grade-pill{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:10.5px; font-weight:700; }
   .grade-pill.grade-high{ background:rgba(255,107,87,.18); color:var(--coral); }
   .grade-pill.grade-medium{ background:rgba(251,191,107,.18); color:var(--amber); }
@@ -935,6 +945,87 @@ document.querySelectorAll('#cityTab thead th').forEach(th=>{
   });
 });
 
+// ---- dynamic label system: every persistent map label re-checks its screen position on every
+// zoom/pan and picks a spot that doesn't collide with any other label, connected by a leader line.
+// This is the only approach that guarantees no overlap "at any zoom" — fixed pixel offsets can't,
+// since screen distance between two real points changes completely as you zoom in or out. ----
+let dynamicLabels = []; // { lat, lon, html, className, priority, marker, line }
+
+function clearDynamicLabels(){
+  dynamicLabels.forEach(o=>{
+    if(o.marker && cityMap.hasLayer(o.marker)) cityMap.removeLayer(o.marker);
+    if(o.line && cityMap.hasLayer(o.line)) cityMap.removeLayer(o.line);
+  });
+  dynamicLabels = [];
+}
+
+function addDynamicLabel(lat, lon, html, className, priority){
+  dynamicLabels.push({ lat, lon, html, className, priority: priority||0, marker:null, line:null });
+}
+
+function removeDynamicLabelsByClass(cls){
+  const keep = [];
+  dynamicLabels.forEach(o=>{
+    if(o.className.includes(cls)){
+      if(o.marker && cityMap.hasLayer(o.marker)) cityMap.removeLayer(o.marker);
+      if(o.line && cityMap.hasLayer(o.line)) cityMap.removeLayer(o.line);
+    } else {
+      keep.push(o);
+    }
+  });
+  dynamicLabels = keep;
+}
+
+function layoutDynamicLabels(){
+  if(!cityMap || dynamicLabels.length === 0) return;
+  dynamicLabels.forEach(o=>{
+    if(o.marker && cityMap.hasLayer(o.marker)) cityMap.removeLayer(o.marker);
+    if(o.line && cityMap.hasLayer(o.line)) cityMap.removeLayer(o.line);
+  });
+
+  // higher priority gets first pick of the best (closest) open position
+  const ordered = [...dynamicLabels].sort((a,b)=> b.priority - a.priority);
+
+  // spacing scales with zoom: zoomed OUT (low zoom) = points sit closer together on screen,
+  // so labels need to reach further away to find open space. Zoomed IN = points are already
+  // spread out, so labels can stay close and lines stay short.
+  const zoom = cityMap.getZoom();
+  const zoomFactor = Math.max(0.6, Math.min(2.4, (13 - zoom) * 0.35 + 1));
+  const ringStart = 26 * zoomFactor;
+  const ringStep = 22 * zoomFactor;
+  const ringMax = 170 * zoomFactor;
+
+  // candidate offsets: expanding rings of positions around the true point
+  const candidates = [];
+  for(let r=ringStart; r<=ringMax; r+=ringStep){
+    for(let ang=0; ang<360; ang+=30){
+      candidates.push([r*Math.cos(ang*Math.PI/180), r*Math.sin(ang*Math.PI/180)]);
+    }
+  }
+
+  const placedRects = [];
+  ordered.forEach(obj=>{
+    const pt = cityMap.latLngToContainerPoint([obj.lat, obj.lon]);
+    const textLen = obj.html.replace(/<[^>]+>/g,'').length;
+    const w = Math.max(50, textLen*6.4 + 22);
+    const h = 22;
+    let chosen = candidates[0];
+    for(const [dx,dy] of candidates){
+      const cx = pt.x+dx, cy = pt.y+dy;
+      const rect = { x:cx-w/2, y:cy-h/2, w, h };
+      const overlaps = placedRects.some(p => !(rect.x+rect.w < p.x-4 || p.x+p.w < rect.x-4 || rect.y+rect.h < p.y-4 || p.y+p.h < rect.y-4));
+      if(!overlaps){ chosen = [dx,dy]; break; }
+    }
+    const labelPoint = L.point(pt.x+chosen[0], pt.y+chosen[1]);
+    placedRects.push({ x:labelPoint.x-w/2, y:labelPoint.y-h/2, w, h });
+    const labelLatLng = cityMap.containerPointToLatLng(labelPoint);
+
+    const icon = L.divIcon({ className:'locality-label', html:`<div class="${obj.className}">${obj.html}</div>`, iconSize:[0,0], iconAnchor:[0,11] });
+    obj.marker = L.marker(labelLatLng, { icon, interactive:false }).addTo(cityMap);
+    obj.line = L.polyline([[obj.lat,obj.lon], labelLatLng], { color:'#3A4258', weight:2, opacity:0.95, dashArray:'3,4' }).addTo(cityMap);
+  });
+}
+
 function initCityMapIfNeeded(){
   if(cityMap) return;
   cityMap = L.map('cityMap', {
@@ -949,6 +1040,7 @@ function initCityMapIfNeeded(){
   cityLabelLayer = L.layerGroup().addTo(cityMap);
   cityFlagLayer = L.layerGroup().addTo(cityMap);
   cityStoreLayer = L.layerGroup().addTo(cityMap);
+  cityMap.on('zoomend moveend', layoutDynamicLabels);
   document.getElementById('cityResetView').addEventListener('click', ()=>{
     if(lastCityBounds && lastCityBounds.length) cityMap.fitBounds(lastCityBounds, { padding:[50,50], maxZoom:13 });
   });
@@ -1004,7 +1096,9 @@ function renderCityStores(){
       <div class="popup-row"><span>Store Revenue (yearly)</span><b>${fmtLakh(s.revenue_lakhs)}</b></div>
     `);
     cityStoreLayer.addLayer(marker);
+    addDynamicLabel(s.lat, s.lon, s.name, 'dyn-label dyn-store', 200);
   });
+  setTimeout(layoutDynamicLabels, 100);
 }
 
 // ---- search-and-flag: find a pincode/locality by name, switch city if needed, and mark it clearly ----
@@ -1051,20 +1145,17 @@ function cityFlagSearch(inputId){
 
   setTimeout(()=>{
     if(cityFlagLayer) cityFlagLayer.clearLayers();
+    removeDynamicLabelsByClass('dyn-search');
     const bounds = [];
     inCity.forEach(match=>{
       L.circleMarker([match.lat, match.lon], {
         radius: 16, color:'#FFFFFF', weight:2.5, fillOpacity:0.06, fillColor:'#FFFFFF', opacity:0.85, dashArray:'3,5'
       }).addTo(cityFlagLayer);
-      const calloutIcon = L.divIcon({
-        className: 'locality-label',
-        html: `<div class="search-callout"><div class="search-callout-tag">Searched: ${match.pin}</div><div class="search-callout-arrow"></div></div>`,
-        iconSize:[0,0], iconAnchor:[-8, 46]
-      });
-      L.marker([match.lat, match.lon], { icon: calloutIcon, zIndexOffset: 1500 }).addTo(cityFlagLayer);
+      addDynamicLabel(match.lat, match.lon, `${match.pin} — ${match.loc}`, 'dyn-label dyn-search', 1000);
       bounds.push([match.lat, match.lon]);
     });
     cityMap.invalidateSize();
+    setTimeout(layoutDynamicLabels, 400);
     if(bounds.length === 1){
       cityMap.flyTo(bounds[0], cityMap.getZoom(), { duration:0.7 });
     } else {
@@ -1102,6 +1193,7 @@ let cityWardLayer = null;
 
 function renderCityMap(data){
   try {
+  clearDynamicLabels();
   cityMarkerLayer.clearLayers();
   cityLabelLayer.clearLayers();
   if(!cityMap.hasLayer(cityLabelLayer)) cityLabelLayer.addTo(cityMap);
@@ -1179,28 +1271,24 @@ function renderCityMap(data){
     bounds.push([d.lat,d.lon]);
   });
 
-  // label the top 5 localities so the map doesn't get crowded
+  // top 5 ranked points: dot at the true location + a dynamically-placed label that never
+  // overlaps other labels, connected back to its point by a thin leader line
   const labelCount = Math.min(5, data.length);
   data.slice(0, labelCount).forEach((d,i)=>{
     if(!Number.isFinite(d.lat) || !Number.isFinite(d.lon)) return;
-    // small anchor dot at the TRUE point, so the label always has a clear, unambiguous marker to point to
-    L.circleMarker([d.lat,d.lon], {
-      radius:4, color:'#C084FC', fillColor:'#C084FC', fillOpacity:0.9, weight:1.5, opacity:1
+    const dot = L.circleMarker([d.lat,d.lon], {
+      radius:7, color:'#C084FC', fillColor:'#C084FC', fillOpacity:0.9, weight:2, opacity:1
     }).addTo(cityLabelLayer);
-    const icon = L.divIcon({
-      className:'locality-label',
-      html:`<div class="tag rank-label">#${i+1} ${d.loc}</div>`,
-      // small stagger only — enough to reduce label-on-label overlap without disconnecting
-      // the text from its actual marker point (previous version offset up to 140px, too far)
-      iconSize:[0,0], iconAnchor:[-14, (i%3)*14 - 14]
-    });
-    L.marker([d.lat,d.lon], { icon, interactive:false }).addTo(cityLabelLayer);
+    dot.bindTooltip(`<b>#${i+1} ${d.loc}</b> — BD Score ${fmtScore(d.score)}`, { direction:'top', className:'hover-tip' });
+    dot.on('click', ()=> cityMap.flyTo([d.lat,d.lon], cityMap.getZoom(), {duration:0.5}));
+    addDynamicLabel(d.lat, d.lon, `#${i+1} ${d.loc}`, 'dyn-label dyn-rank', 100 - i);
   });
 
   const validBounds = bounds.filter(b => Number.isFinite(b[0]) && Number.isFinite(b[1]));
   lastCityBounds = validBounds;
   cityMap.invalidateSize();
   if(validBounds.length) cityMap.fitBounds(validBounds, { padding:[50,50], maxZoom:13 });
+  setTimeout(layoutDynamicLabels, 350); // after fitBounds animation settles, positions are stable
 
   } catch(err) { console.error('function renderCityMap failed:', err); }
 }
